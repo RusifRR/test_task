@@ -5,17 +5,20 @@ from typing import Optional, Annotated
 from sqlalchemy import  select
 from sqlalchemy.orm import Session
 from database import get_session, create_tables
-from models import User
+from models import User, Role, Permission, RolePermission
 from pydantic import BaseModel
 from email_validator import validate_email, EmailNotValidError
 from datetime import datetime
-from utils import get_password_hash, verify_password, create_access_token, create_refresh_token
-from utils import save_refresh_token, validate_refresh_token, revoke_refresh_token, validate_token
+from utils import initial_data, get_password_hash, verify_password
+from utils import create_access_token, create_refresh_token,  save_refresh_token
+from utils import validate_refresh_token, revoke_refresh_token, validate_token
+from permissions import check_permission
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     create_tables()
+    initial_data()
     yield
 
 
@@ -169,6 +172,56 @@ def delete_profile(refresh_token: Token, response: Response, db: Annotated[Sessi
     response.delete_cookie('access_token', path='/')
     return {'message': 'Вы успешно удалили аккаунт'}
     
+    
+@app.get('/document')
+def get_documents(db: Annotated[Session, Depends(get_session)], access_token: str = Cookie(None, alias='access_token')):
+    if not access_token:
+        raise HTTPException(status_code=401, detail='Нет токена')
+    
+    user_id = validate_token(token=access_token)
+    
+    check_permission(user_id=user_id, resource='documents', action='read', db=db)
+    
+    return [
+        {'id': 1, 'title': 'Документ 1'},
+        {'id': 2, 'title': 'Документ 2'}
+    ]
+    
+    
+@app.post('/documents')
+def create_document(db: Annotated[Session, Depends(get_session)], access_token: str = Cookie(None, alias='access_token')):
+    if not access_token:
+        raise HTTPException(status_code=401, detail='Нет токена')
+    
+    user_id = validate_token(token=access_token)
+    
+    check_permission(user_id=user_id, resource='documents', action='write', db=db)
+    
+    return {'message': 'Создали документ'}
+
+
+@app.get('/admin/roles')
+def get_roles(db: Annotated[Session, Depends(get_session)], access_token: str = Cookie(None, alias='access_token')):
+    if not access_token:
+        raise HTTPException(status_code=401, detail='Нет токена')
+    
+    user_id = validate_token(token=access_token)
+    check_permission(user_id=user_id, resource='admin', action='manage', db=db)
+    
+    roles = db.execute(select(Role)).scalars().all()
+    result = []
+    
+    for role in roles:
+        perms = db.execute(select(Permission).join(RolePermission, RolePermission.permission_id == Permission.id).where(RolePermission.role_id == role.id)).scalars().all()
+        print(perms)
+        result.append({
+            'id': role.id,
+            'name': role.role,
+            'permissions': [{'resource': p.resource, 'action': p.action} for p in perms]
+        })
+        
+    return result 
+
     
 @app.post('/logout')
 def logout(refresh_token: Token, response: Response):
