@@ -6,9 +6,6 @@ from models import User, Role, Permission, RolePermission
 
 def check_permission(user_id: int, resource: int, action: str, db: Session):
     user = db.execute(select(User).where(User.id == user_id)).scalars().first()
-    if not user:
-        raise HTTPException(status_code=401, detail='Не авторизован')
-    
         
     role = db.execute(select(Role).where(Role.id == user.role_id)).scalars().first()
         

@@ -71,21 +71,21 @@ def create_refresh_token(data: dict):
 def save_refresh_token(token: str, user_id: int):
     hashed_token = pbkdf2_sha256.hash(token)
     with SessionLocal() as s:
-        user = s.execute(select(RefreshTokens).where(RefreshTokens.user_id == user_id)).scalars().first()
-        if not user:
+        refresh_token = s.execute(select(RefreshTokens).where(RefreshTokens.user_id == user_id)).scalars().first()
+        if not refresh_token:
             s.add(RefreshTokens(user_id=user_id, hashed_token=hashed_token))
             s.commit()
         else:
-            user.hashed_token = hashed_token
-            user.is_revoked = False
+            refresh_token.hashed_token = hashed_token
+            refresh_token.is_revoked = False
             s.commit()
         
         
 def validate_refresh_token(token: str):
     user_id = jwt.decode(token, REFRESH_SECRET_KEY, algorithms=ALGORITHM)['sub']
     with SessionLocal() as s:
-        user = s.execute(select(RefreshTokens).where(RefreshTokens.user_id == user_id)).scalars().first()
-        if user.is_revoked or datetime.now() > user.expires_at or not pbkdf2_sha256.verify(token, user.hashed_token):
+        refresh_token = s.execute(select(RefreshTokens).where(RefreshTokens.user_id == user_id)).scalars().first()
+        if refresh_token.is_revoked or datetime.now() > refresh_token.expires_at or not pbkdf2_sha256.verify(token, refresh_token.hashed_token):
             return None
     return user_id
 
